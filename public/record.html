@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <title>Record — Robotics Data Collection</title>
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    body { background: #000; }
+  </style>
+</head>
+<body>
+  <div class="record-wrap">
+    <div class="video-container" id="videoContainer">
+      <video id="preview" autoplay playsinline muted></video>
+      <video id="playback" playsinline controls class="hidden"></video>
+      <div class="timer" id="timer">
+        <span class="rec-dot"></span>
+        <span id="timerText">00:00</span>
+      </div>
+    </div>
+
+    <div class="controls" id="controls">
+      <button class="record-btn" id="recordBtn" aria-label="Record"></button>
+      <div class="progress-text" id="statusText">Tap to start recording</div>
+    </div>
+
+    <div class="controls hidden" id="reviewControls">
+      <button class="btn" id="uploadBtn">Upload Video</button>
+      <button class="btn btn-secondary" id="retakeBtn">Record Again</button>
+      <div class="progress-wrap hidden" id="progressWrap">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <div class="progress-text hidden" id="progressText">0%</div>
+    </div>
+
+    <div class="error-box hidden" id="errorBox"></div>
+
+    <div class="success-box hidden" id="successBox">
+      <h2>Thank you!</h2>
+      <p>Your video has been uploaded successfully.</p>
+      <div class="user-id" id="successUserID"></div>
+      <button class="btn" id="recordAnotherBtn">Record Another</button>
+    </div>
+  </div>
+
+  <script>
+    const userData = JSON.parse(localStorage.getItem('roboticsUserData') || 'null');
+    if (!userData) {
+      window.location.href = 'index.html';
+    }
+
+    const preview = document.getElementById('preview');
+    const playback = document.getElementById('playback');
+    const recordBtn = document.getElementById('recordBtn');
+    const timer = document.getElementById('timer');
+    const timerText = document.getElementById('timerText');
+    const controls = document.getElementById('controls');
+    const reviewControls = document.getElementById('reviewControls');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const retakeBtn = document.getElementById('retakeBtn');
+    const errorBox = document.getElementById('errorBox');
+    const statusText = document.getElementById('statusText');
+    const progressWrap = document.getElementById('progressWrap');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const successBox = document.getElementById('successBox');
+    const successUserID = document.getElementById('successUserID');
+    const recordAnotherBtn = document.getElementById('recordAnotherBtn');
+
+    let stream = null;
+    let mediaRecorder = null;
+    let recordedChunks = [];
+    let recordedBlob = null;
+    let isRecording = false;
+    let startTime = 0;
+    let timerInterval = null;
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.classList.remove('hidden');
+    }
+
+    function hideError() {
+      errorBox.classList.add('hidden');
+    }
+
+    async function initCamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showError('Your browser does not support camera access. Please use a recent version of Safari or Chrome.');
+        recordBtn.disabled = true;
+        return;
+      }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: true,
+        });
+        preview.srcObject = stream;
+      } catch (err) {
+        console.error(err);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          showError('Camera permission denied. Please enable camera access in your browser settings and reload this page.');
+        } else if (err.name === 'NotFoundError') {
+          showError('No camera found on this device.');
+        } else {
+          showError('Unable to access camera: ' + err.message);
+        }
+        recordBtn.disabled = true;
+      }
+    }
+
+    function getSupportedMimeType() {
+      const types = [
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm',
+        'video/mp4',
+      ];
+      for (const t of types) {
+        if (window.MediaRecorder && MediaRecorder.isTypeSupported(t)) return t;
+      }
+      return '';
+    }
+
+    function formatTime(ms) {
+      const total = Math.floor(ms / 1000);
+      const m = String(Math.floor(total / 60)).padStart(2, '0');
+      const s = String(total % 60).padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function startRecording() {
+      if (!stream) return;
+      recordedChunks = [];
+      const mimeType = getSupportedMimeType();
+      try {
+        mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      } catch (e) {
+        showError('Recording is not supported on this device: ' + e.message);
+        return;
+      }
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        recordedBlob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(recordedBlob);
+        playback.src = url;
+        preview.classList.add('hidden');
+        playback.classList.remove('hidden');
+        controls.classList.add('hidden');
+        reviewControls.classList.remove('hidden');
+      };
+
+      mediaRecorder.start();
+      isRecording = true;
+      recordBtn.classList.add('recording');
+      recordBtn.setAttribute('aria-label', 'Stop recording');
+      statusText.textContent = 'Recording... tap to stop';
+      startTime = Date.now();
+      timer.classList.add('active');
+      timerInterval = setInterval(() => {
+        timerText.textContent = formatTime(Date.now() - startTime);
+      }, 250);
+    }
+
+    function stopRecording() {
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') return;
+      mediaRecorder.stop();
+      isRecording = false;
+      recordBtn.classList.remove('recording');
+      clearInterval(timerInterval);
+      timer.classList.remove('active');
+    }
+
+    recordBtn.addEventListener('click', () => {
+      hideError();
+      if (!isRecording) startRecording();
+      else stopRecording();
+    });
+
+    retakeBtn.addEventListener('click', () => {
+      recordedBlob = null;
+      playback.classList.add('hidden');
+      playback.src = '';
+      preview.classList.remove('hidden');
+      reviewControls.classList.add('hidden');
+      controls.classList.remove('hidden');
+      statusText.textContent = 'Tap to start recording';
+      timerText.textContent = '00:00';
+      progressWrap.classList.add('hidden');
+      progressText.classList.add('hidden');
+      progressBar.style.width = '0%';
+    });
+
+    uploadBtn.addEventListener('click', () => {
+      if (!recordedBlob) return;
+      const formData = new FormData();
+      formData.append('video', recordedBlob, 'recording.webm');
+      formData.append('userID', userData.userID);
+      formData.append('name', userData.name);
+      formData.append('email', userData.email);
+      formData.append('environmentType', userData.environmentType);
+      formData.append('consentGiven', String(userData.consentGiven));
+
+      uploadBtn.disabled = true;
+      retakeBtn.disabled = true;
+      progressWrap.classList.remove('hidden');
+      progressText.classList.remove('hidden');
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/upload');
+
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100);
+          progressBar.style.width = pct + '%';
+          progressText.textContent = 'Uploading... ' + pct + '%';
+        }
+      };
+
+      xhr.onload = () => {
+        uploadBtn.disabled = false;
+        retakeBtn.disabled = false;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res.success) {
+              showSuccess();
+              return;
+            }
+            showError('Upload failed: ' + (res.error || 'Unknown error'));
+          } catch (e) {
+            showError('Invalid server response.');
+          }
+        } else {
+          showError('Upload failed with status ' + xhr.status);
+        }
+      };
+
+      xhr.onerror = () => {
+        uploadBtn.disabled = false;
+        retakeBtn.disabled = false;
+        showError('Network error during upload. Please try again.');
+      };
+
+      xhr.send(formData);
+    });
+
+    function showSuccess() {
+      document.getElementById('videoContainer').classList.add('hidden');
+      reviewControls.classList.add('hidden');
+      successUserID.textContent = userData.userID;
+      successBox.classList.remove('hidden');
+    }
+
+    recordAnotherBtn.addEventListener('click', () => {
+      window.location.reload();
+    });
+
+    window.addEventListener('beforeunload', () => {
+      if (stream) stream.getTracks().forEach((t) => t.stop());
+    });
+
+    initCamera();
+  </script>
+</body>
+</html>
