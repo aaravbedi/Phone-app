@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0e0e10" />
+  <title>Admin — Robotics Data Collection</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container admin-container">
+    <h1>Admin Dashboard</h1>
+    <p class="subtitle">All egocentric video uploads.</p>
+
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-label">Total Uploads</div>
+        <div class="stat-value" id="totalUploads">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Storage</div>
+        <div class="stat-value" id="totalStorage">—</div>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table id="dataTable">
+        <thead>
+          <tr>
+            <th>User ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Environment</th>
+            <th>Size (MB)</th>
+            <th>Uploaded</th>
+          </tr>
+        </thead>
+        <tbody id="dataBody"></tbody>
+      </table>
+      <div class="empty hidden" id="emptyState">No uploads yet.</div>
+    </div>
+  </div>
+
+  <script>
+    function formatBytes(bytes) {
+      return (bytes / (1024 * 1024)).toFixed(2);
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleString();
+    }
+
+    async function loadData() {
+      try {
+        const res = await fetch('/admin/data');
+        const data = await res.json();
+        renderData(data);
+      } catch (err) {
+        document.getElementById('dataBody').innerHTML =
+          '<tr><td colspan="6">Failed to load data: ' + err.message + '</td></tr>';
+      }
+    }
+
+    function renderData(data) {
+      const body = document.getElementById('dataBody');
+      const empty = document.getElementById('emptyState');
+      const table = document.getElementById('dataTable');
+
+      document.getElementById('totalUploads').textContent = data.length;
+      const totalBytes = data.reduce((sum, e) => sum + (e.fileSize || 0), 0);
+      document.getElementById('totalStorage').textContent = formatBytes(totalBytes) + ' MB';
+
+      if (data.length === 0) {
+        table.classList.add('hidden');
+        empty.classList.remove('hidden');
+        return;
+      }
+
+      table.classList.remove('hidden');
+      empty.classList.add('hidden');
+
+      body.innerHTML = data
+        .slice()
+        .reverse()
+        .map((e) => `
+          <tr>
+            <td class="mono">${escapeHtml(e.userID || '')}</td>
+            <td>${escapeHtml(e.name || '')}</td>
+            <td>${escapeHtml(e.email || '')}</td>
+            <td>${escapeHtml(e.environmentType || '')}</td>
+            <td>${formatBytes(e.fileSize || 0)}</td>
+            <td>${formatDate(e.uploadedAt)}</td>
+          </tr>
+        `)
+        .join('');
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    loadData();
+  </script>
+</body>
+</html>

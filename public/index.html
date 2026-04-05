@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#0e0e10" />
+  <title>Sign Up — Robotics Data Collection</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Robotics Data Collection</h1>
+    <p class="subtitle">Help train the next generation of robots by contributing egocentric video data.</p>
+
+    <form id="signupForm">
+      <div class="form-group">
+        <label for="name">Full Name</label>
+        <input type="text" id="name" name="name" required autocomplete="name" />
+      </div>
+
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autocomplete="email" />
+      </div>
+
+      <div class="form-group">
+        <label for="environmentType">Environment Type</label>
+        <select id="environmentType" name="environmentType" required>
+          <option value="">Select an environment...</option>
+          <option value="Home">Home</option>
+          <option value="Kitchen">Kitchen</option>
+          <option value="Warehouse">Warehouse</option>
+          <option value="Restaurant">Restaurant</option>
+          <option value="Lab">Lab</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+
+      <div class="checkbox-group">
+        <input type="checkbox" id="consent" name="consent" required />
+        <label for="consent">I consent to my video being used for robotics training research and understand it will be stored securely</label>
+      </div>
+
+      <button type="submit" class="btn">Continue to Recording</button>
+    </form>
+  </div>
+
+  <script>
+    function generateUserID() {
+      const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+      let s = '';
+      for (let i = 0; i < 12; i++) {
+        s += chars[Math.floor(Math.random() * chars.length)];
+      }
+      return 'user_' + s;
+    }
+
+    document.getElementById('signupForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const userData = {
+        userID: generateUserID(),
+        name: document.getElementById('name').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        environmentType: document.getElementById('environmentType').value,
+        consentGiven: document.getElementById('consent').checked,
+      };
+
+      localStorage.setItem('roboticsUserData', JSON.stringify(userData));
+      window.location.href = 'record.html';
+    });
+  </script>
+</body>
+</html>
