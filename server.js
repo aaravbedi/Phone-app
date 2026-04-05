@@ -2,42 +2,53 @@ const express = require('express');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+const cloudinary = require('cloudinary').v2;
+const streamifier = require('streamifier');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
 const DATA_FILE = path.join(__dirname, 'data.json');
 const PUBLIC_DIR = path.join(__dirname, 'public');
 
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-}
+// Cloudinary config — reads CLOUDINARY_URL or the three discrete env vars
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+  secure: true,
+});
 
 if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, '[]', 'utf8');
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, UPLOADS_DIR);
-  },
-  filename: (req, file, cb) => {
-    const userID = (req.body.userID || 'user_unknown').replace(/[^a-zA-Z0-9_-]/g, '');
-    const timestamp = Date.now();
-    cb(null, `${userID}_${timestamp}.webm`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 500 * 1024 * 1024 }, // 500 MB
 });
 
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR));
 
-app.post('/upload', upload.single('video'), (req, res) => {
+function uploadBufferToCloudinary(buffer, publicId) {
+  return new Promise((resolve, reject) => {
+    const stream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: 'video',
+        folder: 'robotics-data-collection',
+        public_id: publicId,
+      },
+      (error, result) => {
+        if (error) return reject(error);
+        resolve(result);
+      }
+    );
+    streamifier.createReadStream(buffer).pipe(stream);
+  });
+}
+
+app.post('/upload', upload.single('video'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, error: 'No video file uploaded' });
@@ -49,12 +60,19 @@ app.post('/upload', upload.single('video'), (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing required metadata' });
     }
 
+    const safeUserID = String(userID).replace(/[^a-zA-Z0-9_-]/g, '');
+    const timestamp = Date.now();
+    const publicId = `${safeUserID}_${timestamp}`;
+
+    const result = await uploadBufferToCloudinary(req.file.buffer, publicId);
+
     const entry = {
       userID,
       name,
       email,
       environmentType,
-      filename: req.file.filename,
+      videoUrl: result.secure_url,
+      publicId: result.public_id,
       fileSize: req.file.size,
       uploadedAt: new Date().toISOString(),
       consentGiven: consentGiven === 'true' || consentGiven === true,
@@ -77,26 +95,6 @@ app.post('/upload', upload.single('video'), (req, res) => {
     console.error('Upload error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
-});
-
-app.get('/uploads/:filename', (req, res) => {
-  const { filename } = req.params;
-  // Prevent path traversal: only allow safe filenames
-  if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
-    return res.status(400).json({ success: false, error: 'Invalid filename' });
-  }
-  const filePath = path.join(UPLOADS_DIR, filename);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).json({ success: false, error: 'File not found' });
-  }
-  const ext = path.extname(filename).toLowerCase();
-  const contentType =
-    ext === '.webm' ? 'video/webm' :
-    ext === '.mp4' ? 'video/mp4' :
-    'application/octet-stream';
-  res.setHeader('Content-Type', contentType);
-  res.setHeader('Accept-Ranges', 'bytes');
-  res.sendFile(filePath);
 });
 
 app.get('/admin/data', (req, res) => {

@@ -42,15 +42,6 @@
     </div>
   </div>
 
-  <div class="modal hidden" id="videoModal" role="dialog" aria-modal="true" aria-label="Video preview">
-    <div class="modal-backdrop" id="modalBackdrop"></div>
-    <div class="modal-content">
-      <button class="modal-close" id="modalClose" aria-label="Close">&times;</button>
-      <video id="modalVideo" controls playsinline></video>
-      <div class="modal-caption" id="modalCaption"></div>
-    </div>
-  </div>
-
   <script>
     function formatBytes(bytes) {
       return (bytes / (1024 * 1024)).toFixed(2);
@@ -93,54 +84,25 @@
       body.innerHTML = data
         .slice()
         .reverse()
-        .map((e) => `
-          <tr>
-            <td class="mono">${escapeHtml(e.userID || '')}</td>
-            <td>${escapeHtml(e.name || '')}</td>
-            <td>${escapeHtml(e.email || '')}</td>
-            <td>${escapeHtml(e.environmentType || '')}</td>
-            <td>${formatBytes(e.fileSize || 0)}</td>
-            <td>${formatDate(e.uploadedAt)}</td>
-            <td>
-              <button class="btn-play" data-filename="${escapeHtml(e.filename || '')}" data-userid="${escapeHtml(e.userID || '')}">
-                Play
-              </button>
-            </td>
-          </tr>
-        `)
+        .map((e) => {
+          const url = e.videoUrl || '';
+          const videoCell = url
+            ? `<video class="row-video" src="${escapeHtml(url)}" controls preload="metadata" playsinline></video>`
+            : '<span class="empty-cell">—</span>';
+          return `
+            <tr>
+              <td class="mono">${escapeHtml(e.userID || '')}</td>
+              <td>${escapeHtml(e.name || '')}</td>
+              <td>${escapeHtml(e.email || '')}</td>
+              <td>${escapeHtml(e.environmentType || '')}</td>
+              <td>${formatBytes(e.fileSize || 0)}</td>
+              <td>${formatDate(e.uploadedAt)}</td>
+              <td>${videoCell}</td>
+            </tr>
+          `;
+        })
         .join('');
-
-      body.querySelectorAll('.btn-play').forEach((btn) => {
-        btn.addEventListener('click', () => {
-          openVideoModal(btn.dataset.filename, btn.dataset.userid);
-        });
-      });
     }
-
-    const modal = document.getElementById('videoModal');
-    const modalVideo = document.getElementById('modalVideo');
-    const modalCaption = document.getElementById('modalCaption');
-
-    function openVideoModal(filename, userID) {
-      if (!filename) return;
-      modalVideo.src = '/uploads/' + encodeURIComponent(filename);
-      modalCaption.textContent = userID ? userID + ' — ' + filename : filename;
-      modal.classList.remove('hidden');
-      modalVideo.play().catch(() => {});
-    }
-
-    function closeVideoModal() {
-      modal.classList.add('hidden');
-      modalVideo.pause();
-      modalVideo.removeAttribute('src');
-      modalVideo.load();
-    }
-
-    document.getElementById('modalClose').addEventListener('click', closeVideoModal);
-    document.getElementById('modalBackdrop').addEventListener('click', closeVideoModal);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !modal.classList.contains('hidden')) closeVideoModal();
-    });
 
     function escapeHtml(str) {
       return String(str)

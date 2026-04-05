@@ -9,13 +9,23 @@ A mobile-friendly web app for collecting egocentric (first-person) video data to
   - **Sign-up** (`/`) — collects name, email, environment type, and consent
   - **Record** (`/record.html`) — rear-camera live preview with a record button, timer, review, and upload
   - **Admin** (`/admin.html`) — dashboard of all uploads with totals
-- Server-side storage of `.webm` videos and metadata in `data.json`
+- Video files stored in Cloudinary; metadata logged in `data.json`
 - Upload progress indicator
 - Graceful handling of denied camera permissions
 
 ## Setup
 
-Requirements: Node.js 16+
+Requirements: Node.js 18+ and a free [Cloudinary](https://cloudinary.com) account.
+
+Set these environment variables (e.g. in a `.env` file or your host's env settings):
+
+```
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
+```
+
+Then:
 
 ```bash
 npm install
@@ -41,7 +51,7 @@ Multipart form data:
 - `video` — webm video blob
 - `userID`, `name`, `email`, `environmentType`, `consentGiven`
 
-Saves the video to `uploads/<userID>_<timestamp>.webm` and appends an entry to `data.json`.
+Streams the video buffer to Cloudinary and appends an entry to `data.json` containing the returned `videoUrl` (secure URL).
 
 ### `GET /admin/data`
 Returns all upload entries as JSON.
@@ -57,7 +67,6 @@ Returns all upload entries as JSON.
 │   ├── record.html    # Recording page
 │   ├── admin.html     # Admin dashboard
 │   └── styles.css
-├── uploads/           # Video files (gitignored, auto-created)
 └── data.json          # Metadata log (gitignored, auto-created)
 ```
 
