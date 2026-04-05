@@ -79,6 +79,26 @@ app.post('/upload', upload.single('video'), (req, res) => {
   }
 });
 
+app.get('/uploads/:filename', (req, res) => {
+  const { filename } = req.params;
+  // Prevent path traversal: only allow safe filenames
+  if (!/^[a-zA-Z0-9._-]+$/.test(filename)) {
+    return res.status(400).json({ success: false, error: 'Invalid filename' });
+  }
+  const filePath = path.join(UPLOADS_DIR, filename);
+  if (!fs.existsSync(filePath)) {
+    return res.status(404).json({ success: false, error: 'File not found' });
+  }
+  const ext = path.extname(filename).toLowerCase();
+  const contentType =
+    ext === '.webm' ? 'video/webm' :
+    ext === '.mp4' ? 'video/mp4' :
+    'application/octet-stream';
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Accept-Ranges', 'bytes');
+  res.sendFile(filePath);
+});
+
 app.get('/admin/data', (req, res) => {
   try {
     const raw = fs.readFileSync(DATA_FILE, 'utf8');
